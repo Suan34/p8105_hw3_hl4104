@@ -9,12 +9,14 @@ date: "2026-10-15"
 library(tidyverse)
 library(p8105.datasets)
 library(patchwork)
+
 knitr::opts_chunk$set(
   echo = TRUE,
   fig.width = 10,
   fig.height = 6,
   out.width = "95%"
 )
+
 theme_set(theme_minimal() + theme(legend.position = "bottom"))
 ```
 
@@ -40,4 +42,101 @@ knitr::kable(
   caption = "Missingness in the NY NOAA dataset"
 )
 ```
+
+
+The `ny_noaa` dataset contains `r scales::comma(noaa_dimensions[1])` observations and `r noaa_dimensions[2]` variables. Each row is a daily weather record from one weather station. The key variables are the station identifier (`id`), date, precipitation (`prcp`), snowfall (`snow`), snow depth (`snwd`), minimum temperature (`tmin`), and maximum temperature (`tmax`). Missing data are a substantial concern: the highest missingness occurs in `r noaa_missingness$variable[1]`, for which `r scales::percent(noaa_missingness$proportion_missing[1], accuracy = 0.1)` of observations are missing. Any analysis based on these measures therefore uses only the available observations for the variables involved.
+## Data cleaning and common snowfall values
+```{r noaa-cleaning}
+noaa_clean =
+  ny_noaa |>
+  separate(
+    date,
+    into = c("year", "month", "day"),
+    sep = "-",
+    convert = TRUE,
+    remove = FALSE
+  ) |>
+  # reasonable units
+  mutate(
+    across(c(prcp, snow, snwd, tmax, tmin), as.numeric),
+    prcp = prcp / 10,
+    tmax = tmax / 10,
+    tmin = tmin / 10
+  )
+
+common_snowfall =
+  noaa_clean |>
+  filter(!is.na(snow)) |>
+  count(snow, name = "number_of_days", sort = TRUE) |>
+  slice_head(n = 10)
+
+knitr::kable(
+  common_snowfall,
+  col.names = c("Snowfall (mm)", "Number of station-days"),
+  caption = "Ten most commonly observed snowfall values"
+)
+```
+
+I separated the date into numeric year, month, and day variables and converted precipitation, maximum temperature, and minimum temperature from tenths of their reported units to millimeters and degrees Celsius. The most common snowfall value is `r common_snowfall$snow[1]` mm, observed on `r scales::comma(common_snowfall$number_of_days[1])` station-days. This is expected because most days have no or little snowfall. Other frequent values are small amounts or values produced by standard measurement increments and rounding.
+
+## Average January and July maximum tem
+```{r noaa-January-July-plot}
+monthly_station_temperature =
+  noaa_clean |>
+  filter(month %in% c(1, 7)) |>
+  mutate(
+    month = factor(month, levels = c(1, 7), 
+    labels = c("January", "July"))
+  ) |>
+  group_by(id, year, month) |>
+  summarize(mean_tmax = mean(tmax, na.rm = TRUE), .groups = "drop") |>
+  filter(is.finite(mean_tmax))
+
+ggplot(
+  monthly_station_temperature,
+  aes(x = year, y = mean_tmax, group = id)
+) +
+  geom_line(alpha = 0.35, color = "green") +
+  facet_grid(. ~ month) +
+  labs(
+    title = "Average maximum temperature by station and year",
+    x = "Year",
+    y = "Average maximum temperature (°C)"
+  )
+```
+The plot shows a strong and interpretable seasonal contrast: July maximum temperatures are much higher than January maximum temperatures. Stations generally follow similar long-term patterns, while the vertical spread reflects geographic differences among stations. A few station-years are separated sharply from the main collection of lines; these may represent unusual weather, incomplete monthly records, or measurement problems and should be checked before being treated as meaningful climate signals.
+
+
+## Temperature relationship and snowfall distribution
+```{r noaa-temperature-snowfall-plot}
+temperature_plot =
+  noaa_clean |>
+  filter(!is.na(tmin), !is.na(tmax)) |>
+  ggplot(aes(x = tmin, y = tmax)) +
+  geom_hex(bins = 60) +
+  scale_fill_viridis_c(trans = "log10") +
+  labs(
+    title = "Daily minimum and maximum temperatures",
+    x = "Minimum temperature (°C)",
+    y = "Maximum temperature (°C)",
+    fill = "Count"
+  )
+
+snowfall_plot =
+  noaa_clean |>
+  filter(snow > 0, snow < 100) |>
+  mutate(year = factor(year)) |>
+  ggplot(aes(x = year, y = snow)) +
+  geom_violin(fill = "blue", color = "white", scale = "width") +
+  labs(
+    title = "Distribution of positive snowfall below 100 mm",
+    x = "Year",
+    y = "Snowfall (mm)"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 6))
+
+temperature_plot + snowfall_plot
+```
+The hexbin plot is preferable to a scatterplot because the dataset contains many overlapping observations. It shows a strong positive relationship between minimum and maximum temperature, with the greatest density near moderate temperatures. The yearly snowfall distributions are right-skewed: small positive snowfall amounts occur most often, while larger events below 100 mm are less common. The overall shape is broadly similar across years, although the upper tail and concentration vary from year to year.
+
 
