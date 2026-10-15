@@ -137,6 +137,6 @@ snowfall_plot =
 
 temperature_plot + snowfall_plot
 ```
-The hexbin plot is preferable to a scatterplot because the dataset contains many overlapping observations. It shows a strong positive relationship between minimum and maximum temperature, with the greatest density near moderate temperatures. The yearly snowfall distributions are right-skewed: small positive snowfall amounts occur most often, while larger events below 100 mm are less common. The overall shape is broadly similar across years, although the upper tail and concentration vary from year to year.
+The hexbin plot is preferable to a scatterplot because the dataset contains many overlapping observations. It shows a strong positive relationship between minimum and maximum temperature, with the greatest density near moderate temperatures and also some outliers on the edge of the plot. The yearly snowfall distributions are right-skewed: small positive snowfall amounts occur most often, while larger events below 100 mm are less common. The overall shape is broadly similar across years, although the upper tail and concentration vary from year to year.
 
 
