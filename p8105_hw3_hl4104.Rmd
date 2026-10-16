@@ -139,4 +139,49 @@ temperature_plot + snowfall_plot
 ```
 The hexbin plot is preferable to a scatterplot because the dataset contains many overlapping observations. It shows a strong positive relationship between minimum and maximum temperature, with the greatest density near moderate temperatures and also some outliers on the edge of the plot. The yearly snowfall distributions are right-skewed: small positive snowfall amounts occur most often, while larger events below 100 mm are less common. The overall shape is broadly similar across years, although the upper tail and concentration vary from year to year.
 
+## Problem 2
+
+
+## Importing, tidying, and merging the NHANES data
+```{r nhanes-import-clean}
+nhanes_demographics <- read_csv(
+  "nhanes_covar.csv",
+  skip = 4,
+  na = c("NA", ".", ""),
+  show_col_types = FALSE
+) |>
+  janitor::clean_names() |>
+  filter(age >= 21) |>
+  drop_na(sex, age, bmi, education) |>
+  mutate(
+    sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+    education = factor(
+      education,
+      levels = c(1, 2, 3),
+      labels = c(
+        "Less than high school",
+        "High school equivalent",
+        "More than high school"
+      ),
+      ordered = TRUE
+    )
+  )
+nhanes_activity <- read_csv(
+  "nhanes_accel.csv",
+  show_col_types = FALSE
+) |>
+  janitor::clean_names() |>
+  pivot_longer(
+    cols = starts_with("min"),
+    names_to = "minute",
+    names_prefix = "min",
+    values_to = "mims"
+  ) |>
+  mutate(minute = as.integer(minute))
+nhanes_tidy <- nhanes_demographics |>
+  inner_join(nhanes_activity, by = "seqn")
+nhanes_participants <- nhanes_tidy |>
+  distinct(seqn, .keep_all = TRUE)
+```
+After excluding participants younger than 21 and participants with missing demographic information, the analytic dataset contains `r n_distinct(nhanes_tidy$seqn)` participants and `r scales::comma(nrow(nhanes_tidy))` participant-minute observations. The long format preserves every demographic variable and every original minute-level MIMS value while making time-course summaries straightforward.
 
