@@ -185,3 +185,64 @@ nhanes_participants <- nhanes_tidy |>
 ```
 After excluding participants younger than 21 and participants with missing demographic information, the analytic dataset contains `r n_distinct(nhanes_tidy$seqn)` participants and `r scales::comma(nrow(nhanes_tidy))` participant-minute observations. The long format preserves every demographic variable and every original minute-level MIMS value while making time-course summaries straightforward.
 
+  count(education, sex) |>
+  pivot_wider(names_from = sex, values_from = n, values_fill = 0) |>
+  arrange(education)
+knitr::kable(
+  sex_education_table,
+  caption = "Number of participants by education and sex"
+)
+ggplot(nhanes_participants, aes(x = age, fill = sex)) +
+  geom_density(alpha = 0.45) +
+  facet_wrap(~ education, nrow = 1) +
+  scale_fill_manual(values = c("Male" = "#2C7FB8", "Female" = "#E34A33")) +
+  labs(
+    title = "Age distributions by education and sex",
+    x = "Age (years)",
+    y = "Density",
+    fill = "Sex"
+  )
+```
+The table indicates that participants with more than a high school education form the largest education group in this analytic sample. The density curves also show that age composition differs by education level, so comparisons of activity across education categories should be interpreted with age in mind. Within each panel, the male and female distributions overlap substantially, although their peaks and tails are not identical.
+## Total daily activity
+```{r nhanes-total-activity}
+participant_activity <- nhanes_tidy |>
+  group_by(seqn, sex, age, bmi, education) |>
+  summarize(total_activity = sum(mims, na.rm = TRUE), .groups = "drop")
+ggplot(
+  participant_activity,
+  aes(x = age, y = total_activity, color = sex)
+) +
+  geom_point(alpha = 0.65) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
+  facet_wrap(~ education, nrow = 1) +
+  scale_color_manual(values = c("Male" = "#2C7FB8", "Female" = "#E34A33")) +
+  scale_y_continuous(labels = scales::label_comma()) +
+  labs(
+    title = "Total daily activity across age",
+    x = "Age (years)",
+    y = "Total daily MIMS",
+    color = "Sex"
+  )
+```
+Total activity generally declines with age, although there is considerable participant-level variation. The smooth curves suggest that the size and shape of the age-related decline differ across education groups and, in some panels, between men and women. Because these are descriptive smooths rather than adjusted estimates, apparent differences should not be interpreted as causal effects of sex or education.
+## Twenty-four-hour activity profiles
+```{r nhanes-activity-course}
+activity_course <- nhanes_tidy |>
+  mutate(hour = minute / 60) |>
+  group_by(education, sex, minute, hour) |>
+  summarize(mean_mims = mean(mims, na.rm = TRUE), .groups = "drop")
+ggplot(activity_course, aes(x = hour, y = mean_mims, color = sex)) +
+  geom_smooth(se = FALSE, span = 0.08, linewidth = 1) +
+  facet_wrap(~ education, nrow = 1) +
+  scale_color_manual(values = c("Male" = "#2C7FB8", "Female" = "#E34A33")) +
+  scale_x_continuous(breaks = seq(0, 24, by = 4), limits = c(0, 24)) +
+  labs(
+    title = "Average activity over a 24-hour day",
+    x = "Hour of day",
+    y = "Mean MIMS",
+    color = "Sex"
+  )
+```
+Activity is lowest overnight, rises rapidly in the morning, remains elevated through the daytime, and falls again in the evening. This shared daily rhythm is visible in all three education groups. Differences between men and women are smaller overnight and more noticeable during waking hours, while the timing and height of daytime peaks vary somewhat by education level.
+
