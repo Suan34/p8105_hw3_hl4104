@@ -144,12 +144,13 @@ The hexbin plot is preferable to a scatterplot because the dataset contains many
 
 ## Importing, tidying, and merging the NHANES data
 ```{r nhanes-import-clean}
-nhanes_demographics <- read_csv(
+nhanes_demographics =
+  read_csv(
   "nhanes_covar.csv",
   skip = 4,
   na = c("NA", ".", ""),
   show_col_types = FALSE
-) |>
+  ) |>
   janitor::clean_names() |>
   filter(age >= 21) |>
   drop_na(sex, age, bmi, education) |>
@@ -166,10 +167,12 @@ nhanes_demographics <- read_csv(
       ordered = TRUE
     )
   )
-nhanes_activity <- read_csv(
+
+nhanes_activity =
+  read_csv(
   "nhanes_accel.csv",
   show_col_types = FALSE
-) |>
+  ) |>
   janitor::clean_names() |>
   pivot_longer(
     cols = starts_with("min"),
@@ -178,24 +181,35 @@ nhanes_activity <- read_csv(
     values_to = "mims"
   ) |>
   mutate(minute = as.integer(minute))
-nhanes_tidy <- nhanes_demographics |>
+
+nhanes_tidy =
+  nhanes_demographics |>
   inner_join(nhanes_activity, by = "seqn")
-nhanes_participants <- nhanes_tidy |>
+
+nhanes_participants =
+  nhanes_tidy |>
   distinct(seqn, .keep_all = TRUE)
 ```
 After excluding participants younger than 21 and participants with missing demographic information, the analytic dataset contains `r n_distinct(nhanes_tidy$seqn)` participants and `r scales::comma(nrow(nhanes_tidy))` participant-minute observations. The long format preserves every demographic variable and every original minute-level MIMS value while making time-course summaries straightforward.
 
+
+## Sex and education table and age distributions
+```{r nhanes-demographic-summary}
+sex_education_table =
+  nhanes_participants |>
   count(education, sex) |>
   pivot_wider(names_from = sex, values_from = n, values_fill = 0) |>
   arrange(education)
+
+
 knitr::kable(
   sex_education_table,
   caption = "Number of participants by education and sex"
 )
-ggplot(nhanes_participants, aes(x = age, fill = sex)) +
+
+ggplot(nhanes_participants, aes(x = age, fill = sex),colour = age) +
   geom_density(alpha = 0.45) +
-  facet_wrap(~ education, nrow = 1) +
-  scale_fill_manual(values = c("Male" = "#2C7FB8", "Female" = "#E34A33")) +
+  facet_grid(~ education) +
   labs(
     title = "Age distributions by education and sex",
     x = "Age (years)",
@@ -204,19 +218,21 @@ ggplot(nhanes_participants, aes(x = age, fill = sex)) +
   )
 ```
 The table indicates that participants with more than a high school education form the largest education group in this analytic sample. The density curves also show that age composition differs by education level, so comparisons of activity across education categories should be interpreted with age in mind. Within each panel, the male and female distributions overlap substantially, although their peaks and tails are not identical.
+
 ## Total daily activity
 ```{r nhanes-total-activity}
-participant_activity <- nhanes_tidy |>
+participant_activity =
+  nhanes_tidy |>
   group_by(seqn, sex, age, bmi, education) |>
   summarize(total_activity = sum(mims, na.rm = TRUE), .groups = "drop")
+
 ggplot(
   participant_activity,
   aes(x = age, y = total_activity, color = sex)
-) +
+  ) +
   geom_point(alpha = 0.65) +
   geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
-  facet_wrap(~ education, nrow = 1) +
-  scale_color_manual(values = c("Male" = "#2C7FB8", "Female" = "#E34A33")) +
+  facet_grid(~ education) +
   scale_y_continuous(labels = scales::label_comma()) +
   labs(
     title = "Total daily activity across age",
@@ -228,14 +244,15 @@ ggplot(
 Total activity generally declines with age, although there is considerable participant-level variation. The smooth curves suggest that the size and shape of the age-related decline differ across education groups and, in some panels, between men and women. Because these are descriptive smooths rather than adjusted estimates, apparent differences should not be interpreted as causal effects of sex or education.
 ## Twenty-four-hour activity profiles
 ```{r nhanes-activity-course}
-activity_course <- nhanes_tidy |>
+activity_course =
+  nhanes_tidy |>
   mutate(hour = minute / 60) |>
   group_by(education, sex, minute, hour) |>
   summarize(mean_mims = mean(mims, na.rm = TRUE), .groups = "drop")
+
 ggplot(activity_course, aes(x = hour, y = mean_mims, color = sex)) +
   geom_smooth(se = FALSE, span = 0.08, linewidth = 1) +
-  facet_wrap(~ education, nrow = 1) +
-  scale_color_manual(values = c("Male" = "#2C7FB8", "Female" = "#E34A33")) +
+  facet_grid(~ education) +
   scale_x_continuous(breaks = seq(0, 24, by = 4), limits = c(0, 24)) +
   labs(
     title = "Average activity over a 24-hour day",
@@ -246,3 +263,147 @@ ggplot(activity_course, aes(x = hour, y = mean_mims, color = sex)) +
 ```
 Activity is lowest overnight, rises rapidly in the morning, remains elevated through the daytime, and falls again in the evening. This shared daily rhythm is visible in all three education groups. Differences between men and women are smaller overnight and more noticeable during waking hours, while the timing and height of daytime peaks vary somewhat by education level.
 
+
+# Problem 3
+## Importing, cleaning, and describing the Citi Bike data
+```{r citibike-import-clean}
+citibike_files =
+  tribble(
+  ~file_name, ~year, ~month,
+  "Jan 2020 Citi.csv", 2020, "January",
+  "July 2020 Citi.csv", 2020, "July",
+  "Jan 2024 Citi.csv", 2024, "January",
+  "July 2024 Citi.csv", 2024, "July"
+  )
+
+citibike_data =
+  citibike_files |>
+  mutate(
+    ride_data = map(
+      file_name,
+      ~ read_csv(file.path("citibike", .x), show_col_types = FALSE)
+    )
+  ) |>
+  unnest(ride_data) |>
+  mutate(
+    year = factor(year, levels = c(2020, 2024)),
+    month = factor(month, levels = c("January", "July")),
+    weekdays = factor(
+      weekdays,
+      levels = c(
+        "Monday", "Tuesday", "Wednesday", "Thursday",
+        "Friday", "Saturday", "Sunday"
+      ),
+      ordered = TRUE
+    ),
+    member_casual = factor(
+      member_casual,
+      levels = c("member", "casual"),
+      labels = c("Member", "Casual")
+    ),
+    rideable_type = factor(
+      rideable_type,
+      levels = c("classic_bike", "electric_bike"),
+      labels = c("Classic bike", "Electric bike")
+    )
+  )
+```
+The combined Citi Bike dataset contains `r scales::comma(nrow(citibike_data))` rides and `r ncol(citibike_data)` variables. Each row represents one sampled ride and includes a ride identifier, bike type, day of the week, duration in minutes, starting and ending station names, membership status, year, and month. The dataset combines January and July observations from 2020 and 2024, which supports comparisons across season and year.
+
+## Ride counts by year, month, and membership status
+```{r citibike-ride-counts}
+ride_count_table =
+  citibike_data |>
+  count(year, month, member_casual, name = "number_of_rides") |>
+  pivot_wider(
+    names_from = member_casual,
+    values_from = number_of_rides,
+    values_fill = 0
+  ) |>
+  arrange(year, month)
+
+
+knitr::kable(
+  ride_count_table,
+  caption = "Number of rides by year, month, and membership status"
+)
+```
+Ride counts are higher in July than in January in both years, which is consistent with more favorable summer riding conditions. Members account for more rides than casual riders in every year-month combination. The sample also contains substantially more rides in 2024 than in 2020, reflecting the system's growth as well as the sampling design described in the assignment.
+## Five most popular starting stations in July 2024
+```{r citibike-popular-stations}
+popular_stations =
+  citibike_data |>
+  filter(year == "2024", month == "July", !is.na(start_station_name)) |>
+  count(start_station_name, name = "number_of_rides", sort = TRUE) |>
+  slice_head(n = 5)
+
+knitr::kable(
+  popular_stations,
+  col.names = c("Starting station", "Number of rides"),
+  caption = "Five most popular starting stations in July 2024"
+)
+```
+The most popular starting station in July 2024 is `r popular_stations$start_station_name[1]`, with `r scales::comma(popular_stations$number_of_rides[1])` rides in the sample. The leading stations are concentrated at locations that plausibly generate heavy recreational or commuter traffic, although this table describes trip origins rather than the number of unique riders.
+
+
+## Median ride duration by weekday, month, and year
+```{r citibike-median-duration}
+median_duration =
+  citibike_data |>
+  group_by(year, month, weekdays) |>
+  summarize(
+    median_duration = median(duration, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+ggplot(
+  median_duration,
+  aes(x = weekdays, y = median_duration, color = month, group = month)
+  ) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.5) +
+  facet_grid(~ year) +
+  labs(
+    title = "Median ride duration by weekday, month, and year",
+    x = "Day of week",
+    y = "Median ride duration (minutes)",
+    color = "Month"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+Median rides are generally longer in July than in January, especially on weekends, which suggests a larger recreational component during summer. Weekday medians are comparatively stable and shorter, consistent with more routine transportation. Comparing the two panels also shows whether the weekly pattern changed between 2020 and 2024 without obscuring the seasonal contrast.
+
+
+## Ride duration in 2024 by month, membership, and bike type
+```{r citibike-2024-duration-distribution}
+citibike_data |>
+  filter(year == "2024") |>
+  ggplot(
+    aes(x = member_casual, y = duration, fill = rideable_type)
+  ) +
+  geom_violin(
+    position = position_dodge(width = 0.9),
+    trim = TRUE,
+    alpha = 0.75
+  ) +
+  geom_boxplot(
+    width = 0.14,
+    outlier.shape = NA,
+    position = position_dodge(width = 0.9),
+    alpha = 0.8
+  ) +
+  facet_grid(~ month) +
+  coord_cartesian(ylim = c(0, 60)) +
+  scale_fill_manual(
+    values = c("Classic bike" = "#74A9CF", "Electric bike" = "#F03B20")
+  ) +
+  labs(
+    title = "Distribution of ride duration in 2024",
+    subtitle = "The display is limited to 0–60 minutes so the central distributions are readable.",
+    x = "Membership status",
+    y = "Ride duration (minutes)",
+    fill = "Bike type"
+  )
+```
+Casual riders tend to take longer trips than members, particularly in July. Electric-bike rides are generally more concentrated at shorter durations than classic-bike rides, which may reflect faster travel or different use cases. July distributions are wider and have higher centers than January distributions, especially for casual riders. The y-axis restriction changes only the displayed range; it does not remove observations from the computation of the violin and boxplot summaries.
